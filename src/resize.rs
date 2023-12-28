@@ -1,11 +1,13 @@
 use fast_image_resize as fr;
 use image::RgbImage;
 use std::num::NonZeroU32;
+use image::Pixel;
+use fast_image_resize::pixels::PixelExt;
 
 // code modified from https://github.com/Cykooz/fast_image_resize
 
 fn resize_image_with_cropping(
-    mut src_view: fr::ImageView,
+    mut src_view: fr::DynamicImageView,
     dst_width: NonZeroU32,
     dst_height: NonZeroU32,
 ) -> fr::Image {

@@ -1,12 +1,17 @@
 #![allow(clippy::manual_map)]
 
 use fastblur::gaussian_blur;
-use image::{imageops, io::Reader as ImageReader, RgbImage};
+use image::{imageops, Pixel, GenericImageView, io::Reader as ImageReader, RgbImage, ImageBuffer, Rgb};
 use pyo3::prelude::*;
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
 };
+use imageproc::drawing::{draw_filled_circle_mut, Blend};
+use imageproc::rect::Rect;
+use image::DynamicImage::ImageRgb8;
+use image::DynamicImage;
+
 
 mod gradient;
 mod noise;
@@ -198,13 +203,47 @@ fn paste_images(
     imageops::overlay(&mut base, background, x, y);
 
     // Foreground paste
-    if let Some(foreground) = foreground {
+    if let Some(mut foreground) = foreground {
+        let mut mask = RgbImage::new(foreground.width(), foreground.height());
+
+        // Draw a filled circle on the mask
+        let center_x = (foreground.width() / 2) as i32;
+        let center_y = (foreground.height() / 2) as i32;
+        let radius = std::cmp::min(center_x, center_y);
+        let white = Rgb([255u8, 255u8, 255u8]);
+        draw_filled_circle_mut(&mut mask, (center_x, center_y), radius, white);
+
+        // Convert the foreground image to RgbaImage
+        let foreground_dynamic = ImageRgb8(foreground.clone());
+        let mut foreground_rgba = foreground_dynamic.to_rgba8();
+
+        // Apply the mask to the foreground image
+        for (x, y, pixel) in mask.enumerate_pixels() {
+            if *pixel == Rgb([0, 0, 0]) {
+                let mut p = *foreground_rgba.get_pixel(x, y);
+                p.channels_mut()[3] = 0;
+                foreground_rgba.put_pixel(x, y, p);
+            }
+        }
+
+        // Convert the base image to RgbaImage
+        let base_dynamic = ImageRgb8(base.clone());
+        let mut base_rgba = base_dynamic.to_rgba8();
+
         let x = (i64::from(available_geometry[0]) - i64::from(foreground.width())) / 2
             + i64::from(available_geometry[2]);
         let y = (i64::from(available_geometry[1]) - i64::from(foreground.height())) / 2
             + i64::from(available_geometry[3]);
 
-        imageops::overlay(&mut base, &foreground, x, y)
+        imageops::overlay(&mut base_rgba, &foreground_rgba, x, y);
+
+        // Convert RgbaImage back to RgbImage
+        let base_dynamic = DynamicImage::ImageRgba8(base_rgba);
+        let base_rgb = base_dynamic.to_rgb8();
+
+        base_rgb
+    } else {
+        // Return a default RgbImage when foreground is None
+        RgbImage::new(1, 1)
     }
-    base
 }
